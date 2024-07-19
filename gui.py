@@ -7,7 +7,11 @@ import os
 
 class ExcelCompareFrame(wx.Frame):
     def __init__(self):
-        super().__init__(parent=None, title="Emil's Excel Comparer", size=(600, 500))
+        initial_width = 600
+        initial_height = 500
+        new_height = int(initial_height * 1.5)
+        
+        super().__init__(parent=None, title="Emil's Excel Comparer", size=(initial_width, new_height))
         panel = wx.Panel(self)
         
         bg_color = wx.Colour(30, 30, 30)
@@ -55,6 +59,11 @@ class ExcelCompareFrame(wx.Frame):
         self.output_ctrl.SetBackgroundColour(wx.Colour(40, 40, 40))
         self.output_ctrl.SetForegroundColour(text_color)
         
+        self.sheets_label = wx.StaticText(panel, label="Number of Sheets: Not checked")
+        self.rows_label = wx.StaticText(panel, label="Number of Rows: Not checked")
+        self.columns_label = wx.StaticText(panel, label="Number of Columns: Not checked")
+        self.content_label = wx.StaticText(panel, label="Identical Content: Not checked")
+        
         main_sizer = wx.BoxSizer(wx.VERTICAL)
         main_sizer.Add(title, 0, wx.ALL | wx.CENTER, 20)
         
@@ -68,6 +77,11 @@ class ExcelCompareFrame(wx.Frame):
         main_sizer.Add(self.compare_btn, 0, wx.ALIGN_CENTER | wx.BOTTOM, 20)
         main_sizer.Add(self.gauge, 0, wx.ALIGN_CENTER | wx.BOTTOM, 10)
         main_sizer.Add(self.timer_label, 0, wx.ALIGN_CENTER | wx.BOTTOM, 10)
+        
+        main_sizer.Add(self.sheets_label, 0, wx.ALIGN_LEFT | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
+        main_sizer.Add(self.rows_label, 0, wx.ALIGN_LEFT | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
+        main_sizer.Add(self.columns_label, 0, wx.ALIGN_LEFT | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
+        main_sizer.Add(self.content_label, 0, wx.ALIGN_LEFT | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
         
         output_sizer = wx.BoxSizer(wx.VERTICAL)
         output_sizer.Add(self.output_ctrl, 1, wx.EXPAND)
@@ -112,10 +126,10 @@ class ExcelCompareFrame(wx.Frame):
             self.output_ctrl.SetValue("Select both files before comparing.")
     
     def run_comparison(self):
-        result = compare_excel_files(self.file1_path, self.file2_path)
-        wx.CallAfter(self.comparison_done, result)
+        summary, result = compare_excel_files(self.file1_path, self.file2_path)
+        wx.CallAfter(self.comparison_done, summary, result)
     
-    def comparison_done(self, result):
+    def comparison_done(self, summary, result):
         self.timer.Stop()
         elapsed_time = time.time() - self.start_time
         self.timer_label.SetLabel(f"Time: {elapsed_time:.2f} seconds")
@@ -123,6 +137,36 @@ class ExcelCompareFrame(wx.Frame):
         
         self.output_ctrl.SetValue(result)
         self.compare_btn.Enable()
+        
+        if summary:
+            self.update_summary_labels(summary)
+    
+    def update_summary_labels(self, summary):
+        self.update_label(self.sheets_label, "Number of Sheets", summary['sheets'])
+        self.update_label(self.rows_label, "Number of Rows", summary['rows'])
+        self.update_label(self.columns_label, "Number of Columns", summary['columns'])
+        self.update_label(self.content_label, "Identical Content", summary['content'])
+    
+    def update_label(self, label, text, data):
+        status = data['status']
+        count1 = data.get('count1', 0)
+        count2 = data.get('count2', 0)
+        
+        if status == 'Passed':
+            color = "green"
+            if text == "Identical Content":
+                status_text = "Passed!"
+            else:
+                status_text = f"Passed! ({count1})"
+        else:
+            color = "red"
+            if text == "Identical Content":
+                status_text = "Failed!"
+            else:
+                status_text = f"Failed! File 1: {count1}, File 2: {count2}"
+
+        label_text = f"{text}: <span foreground='{color}'>{status_text}</span>"
+        label.SetLabelMarkup(label_text)
     
     def update_timer(self, event):
         elapsed_time = time.time() - self.start_time

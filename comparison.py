@@ -20,39 +20,76 @@ def compare_excel_files(file1, file2):
         if sheets1 != sheets2:
             return f"The files have different sheets:\nFile 1: {sheets1}\nFile 2: {sheets2}"
         
+        summary = {
+            'sheets': {'status': 'Passed' if sheets1 == sheets2 else 'Failed',
+                       'count1': len(sheets1), 'count2': len(sheets2)},
+            'rows': {'status': 'Checking', 'count1': 0, 'count2': 0},
+            'columns': {'status': 'Checking', 'count1': 0, 'count2': 0},
+            'content': {'status': 'Checking', 'count1': 0, 'count2': 0}
+        }
+
         result = []
+        total_rows1 = total_rows2 = 0
+        max_columns1 = max_columns2 = 0
+        identical_content = True
         
         for sheet_name in sheets1:
             logging.info(f"Compare sheets: {sheet_name}")
             
-            cells1 = content1[sheet_name]
-            cells2 = content2[sheet_name]
+            rows1 = get_rows(content1[sheet_name])
+            rows2 = get_rows(content2[sheet_name])
             
-            if cells1 == cells2:
-                result.append(f"Sheet '{sheet_name}' is identical in both files.")
-            else:
+            total_rows1 += len(rows1)
+            total_rows2 += len(rows2)
+            max_columns1 = max(max_columns1, max(len(row) for row in rows1) if rows1 else 0)
+            max_columns2 = max(max_columns2, max(len(row) for row in rows2) if rows2 else 0)
+            
+            if set(rows1) != set(rows2):
+                identical_content = False
                 result.append(f"Sheet '{sheet_name}' has differences:")
+                missing_in_file2 = set(rows1) - set(rows2)
+                missing_in_file1 = set(rows2) - set(rows1)
                 
-                all_cells = set(cells1.keys()) | set(cells2.keys())
-                differences = []
-                for cell in all_cells:
-                    if cell not in cells1:
-                        differences.append(f"Cell {cell} is only present in File 2: {cells2[cell]}")
-                    elif cell not in cells2:
-                        differences.append(f"Cell {cell} is only present in File 1: {cells1[cell]}")
-                    elif cells1[cell] != cells2[cell]:
-                        differences.append(f"Cell {cell} differs: File 1: {cells1[cell]}, File 2: {cells2[cell]}")
-                
-                max_differences = 20
-                if len(differences) > max_differences:
-                    result.extend(differences[:max_differences])
-                    result.append(f"... and {len(differences) - max_differences} additional differences.")
-                else:
-                    result.extend(differences)
+                if missing_in_file2:
+                    result.append(f"Rows in File 1 but not in File 2:")
+                    result.extend([f"  Row {rows1.index(row) + 1}: {row[0]}" for row in list(missing_in_file2)[:20]])
+                    if len(missing_in_file2) > 20:
+                        result.append(f"  ... and {len(missing_in_file2) - 20} more rows")
+                if missing_in_file1:
+                    result.append(f"Rows in File 2 but not in File 1:")
+                    result.extend([f"  Row {rows2.index(row) + 1}: {row[0]}" for row in list(missing_in_file1)[:20]])
+                    if len(missing_in_file1) > 20:
+                        result.append(f"  ... and {len(missing_in_file1) - 20} more rows")
         
-        return "\n\n".join(result)
+        summary['rows']['count1'] = total_rows1
+        summary['rows']['count2'] = total_rows2
+        summary['rows']['status'] = 'Passed' if total_rows1 == total_rows2 else 'Failed'
+        
+        summary['columns']['count1'] = max_columns1
+        summary['columns']['count2'] = max_columns2
+        summary['columns']['status'] = 'Passed' if max_columns1 == max_columns2 else 'Failed'
+        
+        summary['content']['status'] = 'Passed' if identical_content else 'Failed'
+        
+        return summary, "\n\n".join(result)
     
     except Exception as e:
         logging.error(f"An error occurred while comparing the files: {str(e)}")
         logging.error(traceback.format_exc())
-        return f"An error occurred while comparing the files:\n{str(e)}\n\nSee the log file for more information."
+        return None, f"An error occurred while comparing the files:\n{str(e)}\n\nSee the log file for more information."
+
+def get_rows(sheet_content):
+    rows = []
+    for cell, value in sheet_content.items():
+        row, col = split_cell_address(cell)
+        while len(rows) <= row:
+            rows.append([])
+        while len(rows[row]) <= col:
+            rows[row].append(None)
+        rows[row][col] = value
+    return [tuple(row) for row in rows if any(cell is not None for cell in row)]
+
+def split_cell_address(address):
+    row = int(''.join(filter(str.isdigit, address))) - 1
+    col = sum((ord(char) - ord('A') + 1) * (26 ** i) for i, char in enumerate(reversed(address.rstrip('0123456789')))) - 1
+    return row, col
